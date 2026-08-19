@@ -34,6 +34,7 @@ def extract_audio(
         text=True,
     )
 
+# returncode == 0 mtlb ki successfull
     if result.returncode != 0:
         raise RuntimeError(
             f"FFmpeg failed:\n{result.stderr}"

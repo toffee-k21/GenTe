@@ -29,3 +29,5 @@ def transcribe_audio(
         )
 
     return response
+
+#note : here audio_file is a file **object**, that is created by py to let users interact with the file. like read, write etc....it is not the actual data , or binary of audio file
