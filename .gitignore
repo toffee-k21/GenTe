@@ -40,3 +40,7 @@ dist/
 # Temporary files
 *.tmp
 *.temp
+
+# Ignore audio and uploads directories
+/audio
+/uploads
