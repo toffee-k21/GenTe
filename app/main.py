@@ -119,16 +119,7 @@ async def upload_video(
 
         "filename": file.filename,
 
-        "transcript": transcript.text,
+        "transcript": transcript,
 
-        "segments": [
-            {
-                "start": segment.start,
-                "end": segment.end,
-                "text": segment.text,
-            }
-            for segment in (
-                transcript.segments or []
-            )
-        ],
+        
     }
