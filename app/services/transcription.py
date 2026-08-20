@@ -16,26 +16,17 @@ def transcribe_audio(audio_path: str):
     )
 
     prompt = prompt = """
-    Transcribe the entire audio.
+    Transcribe the entire audio file.
 
-    Return ONLY valid JSON in this exact format:
+    Create a segment whenever there is a natural change in speech.
 
-    {
-        "segments": [
-            {
-                "start": 0.0,
-                "end": 5.2,
-                "text": "..."
-            }
-        ]
-    }
+    For every segment:
+    - start = timestamp in seconds
+    - end = timestamp in seconds
+    - text = exact spoken words
 
-    Rules:
-    - start and end must be numbers representing seconds
-    - text must contain the exact spoken words
-    - create a segment whenever there is a natural change in speech
-    - do not summarize
-    - do not add explanations outside the JSON
+    Do not summarize.
+    Do not skip spoken words.
     """
 
     response = client.models.generate_content(
@@ -80,8 +71,5 @@ def transcribe_audio(audio_path: str):
     )
 
     transcript = json.loads(response.text)
-    print(transcript)
 
     return transcript
-
-#note : here audio_file is a file **object**, that is created by py to let users interact with the file. like read, write etc....it is not the actual data , or binary of audio file

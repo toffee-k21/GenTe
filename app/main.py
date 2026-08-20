@@ -120,6 +120,5 @@ async def upload_video(
         "filename": file.filename,
 
         "transcript": transcript,
-
         
     }
