@@ -8,6 +8,7 @@ from fastapi import (
     HTTPException,
 )
 
+from app.services.clipping import create_clips
 from app.services.highlight import find_highlights
 from app.services.video import extract_audio
 from app.services.transcription import (
@@ -123,11 +124,16 @@ async def upload_video(
         prompt
     )
 
+#clip
+    clips = create_clips(
+        str(video_path),
+        highlights
+    )
+
     return {
         "video_id": video_id,
 
         "filename": file.filename,
 
-        "transcript": transcript,
-        
+        "clips": clips
     }

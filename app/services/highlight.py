@@ -50,7 +50,7 @@ def find_highlights(transcript : dict, user_prompt : str):
         response_schema={
             "type": "object",
             "properties": {
-                "segments": {
+                "clips": {
                     "type": "array",
                     "items": {
                         "type": "object",
