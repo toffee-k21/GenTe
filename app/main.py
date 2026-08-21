@@ -1,11 +1,12 @@
 from pathlib import Path
 from uuid import uuid4
-
+from fastapi.staticfiles import StaticFiles
 from fastapi import (
     FastAPI,
     UploadFile,
     File,
     HTTPException,
+
 )
 
 from app.services.clipping import create_clips
@@ -20,6 +21,11 @@ app = FastAPI(
     title="GenTe",
 )
 
+app.mount(
+    "/clips",
+    StaticFiles(directory="clips"),
+    name="clips",
+)
 
 UPLOAD_DIR = Path("uploads")
 AUDIO_DIR = Path("audio")
