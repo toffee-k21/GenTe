@@ -8,6 +8,7 @@ from fastapi import (
     HTTPException,
 )
 
+from app.services.highlight import find_highlights
 from app.services.video import extract_audio
 from app.services.transcription import (
     transcribe_audio,
@@ -44,6 +45,7 @@ def health():
 @app.post("/videos")
 async def upload_video(
     file: UploadFile = File(...),
+    prompt: str = "Summarize the video in 3 sentences.",
 ):
 
     if not file.filename:
@@ -112,6 +114,13 @@ async def upload_video(
 #transcript
     transcript = transcribe_audio(
         str(audio_path)
+    )
+
+
+#highlight
+    highlights = find_highlights(
+        transcript,
+        prompt
     )
 
     return {

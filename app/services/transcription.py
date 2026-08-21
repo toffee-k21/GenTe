@@ -1,13 +1,8 @@
-from google import genai
+
 from google.genai import types
 import json
+from app.clients.gemini import client
 
-from app.config import GEMINI_API_KEY
-
-
-client = genai.Client(
-    api_key=GEMINI_API_KEY
-)
 
 def transcribe_audio(audio_path: str):
 
@@ -15,7 +10,7 @@ def transcribe_audio(audio_path: str):
         file=audio_path
     )
 
-    prompt = prompt = """
+    prompt = """
     Transcribe the entire audio file.
 
     Create a segment whenever there is a natural change in speech.
