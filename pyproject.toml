@@ -6,4 +6,6 @@ dependencies = [
     "fastapi[standard]>=0.128.8",
     "google-genai>=1.47.0",
     "python-dotenv>=1.2.1",
+    "requests>=2.32.3",
+    "yt-dlp>=2025.1.26",
 ]
