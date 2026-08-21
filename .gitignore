@@ -44,3 +44,4 @@ dist/
 # Ignore audio and uploads directories
 /audio
 /uploads
+/clips

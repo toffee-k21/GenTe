@@ -124,6 +124,8 @@ async def upload_video(
         prompt
     )
 
+    print("Highlights found:", highlights)
+
 #clip
     clips = create_clips(
         str(video_path),

@@ -73,7 +73,7 @@ def create_clips(
             "start": start,
             "end": end,
             "duration": duration,
-            "reason": highlight["reason"],
+            "reason": highlight["text"],
             "video_url": (
                 f"/clips/{video_id}/{clip_filename}"
             ),

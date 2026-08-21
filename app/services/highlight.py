@@ -74,7 +74,7 @@ def find_highlights(transcript : dict, user_prompt : str):
                 }
             },
             "required": [
-                "segments"
+                "clips"
             ]
         }
     )
