@@ -139,7 +139,7 @@ def health():
     }
 
 
-@app.post("/videos")
+@app.post("/videos/upload")
 async def upload_video(
     background_tasks: BackgroundTasks,
     file: UploadFile | None = File(None),
