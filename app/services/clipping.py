@@ -1,5 +1,6 @@
 from pathlib import Path
 import subprocess
+from app.services.video import get_ffmpeg_path
 
 
 CLIPS_DIR = Path("clips")
@@ -60,7 +61,7 @@ def create_clips(
             video_filter = ",".join(video_filters) if video_filters else None
 
         command = [
-            "ffmpeg",
+            get_ffmpeg_path(),
             "-y",
 
             "-ss",
@@ -155,4 +156,4 @@ def create_clips(
     return {
         "clips": clips,
         "merged_clip_url": merged_clip_url
-    }
+    }
