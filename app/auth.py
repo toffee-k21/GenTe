@@ -187,8 +187,8 @@ async def register(user_data: UserRegisterSchema):
         # Create user
         user = {
             "email": email,
-            "id": str(uuid.uuid4()),
-            "hashed_password": hashed_pwd,
+            "user_id": str(uuid.uuid4()),
+            "password": hashed_pwd,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
 
@@ -242,7 +242,7 @@ async def login(user_data: UserLoginSchema):
 
     if not user or not verify_password(
         user_data.password,
-        user["hashed_password"]
+        user["password"]
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
