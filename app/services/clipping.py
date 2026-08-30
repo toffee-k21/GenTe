@@ -1,3 +1,15 @@
+from pathlib import Path
+import subprocess
+from app.services.video import get_ffmpeg_path
+
+
+CLIPS_DIR = Path("clips")
+
+CLIPS_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
 def create_clips(
     video_path: str,
     highlights: dict,
