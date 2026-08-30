@@ -1,31 +1,52 @@
 from pathlib import Path
 from uuid import uuid4
-
+from fastapi.staticfiles import StaticFiles
 from fastapi import (
     FastAPI,
-    File,
-    Form,
-    HTTPException,
     UploadFile,
-    BackgroundTasks,
+    File,
+    HTTPException,
+    Form,
+    Depends,
 )
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.services.clipping import create_clips
-from app.services.downloader import download_video
+from app.services.clipping import create_clips, merge_clips
 from app.services.highlight import find_highlights
 from app.services.video import extract_audio
+from app.services.transcription import (
+    transcribe_audio,
+)
+from app.services.youtube import download_youtube_video
+from app.auth import router as auth_router, get_current_user
 
 
 app = FastAPI(
-    title="GenTe",
+    title="TeaserAI",
 )
 
+app.include_router(auth_router)
 
-# Directories
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount(
+    "/clips",
+    StaticFiles(directory="clips"),
+    name="clips",
+)
+
 UPLOAD_DIR = Path("uploads")
 AUDIO_DIR = Path("audio")
-CLIPS_DIR = Path("clips")
+
 
 UPLOAD_DIR.mkdir(
     parents=True,
@@ -37,100 +58,6 @@ AUDIO_DIR.mkdir(
     exist_ok=True,
 )
 
-CLIPS_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
-
-
-# Serve generated clips
-app.mount(
-    "/clips",
-    StaticFiles(directory=str(CLIPS_DIR)),
-    name="clips",
-)
-
-
-# In-memory status store
-tasks_status = {}
-
-
-def process_video_pipeline(
-    video_id: str,
-    video_path: Path,
-    audio_path: Path,
-    url: str | None,
-    prompt: str,
-    filename: str,
-):
-    try:
-        # 1. Download video if URL is provided
-        if url:
-            tasks_status[video_id] = {
-                "status": "processing",
-                "progress": "downloading",
-                "filename": filename,
-                "clips": [],
-            }
-            download_video(
-                url=url,
-                output_path=str(video_path),
-            )
-
-        # 2. Extract Audio
-        tasks_status[video_id] = {
-            "status": "processing",
-            "progress": "extracting_audio",
-            "filename": filename,
-            "clips": [],
-        }
-        extract_audio(
-            str(video_path),
-            str(audio_path),
-        )
-
-        # 3. Find Highlights (Directly from audio)
-        tasks_status[video_id] = {
-            "status": "processing",
-            "progress": "finding_highlights",
-            "filename": filename,
-            "clips": [],
-        }
-        highlights = find_highlights(
-            str(audio_path),
-            prompt,
-        )
-
-        # 4. Create Clips
-        tasks_status[video_id] = {
-            "status": "processing",
-            "progress": "clipping",
-            "filename": filename,
-            "clips": [],
-        }
-        clips_data = create_clips(
-            str(video_path),
-            highlights,
-        )
-
-        # 5. Completed
-        tasks_status[video_id] = {
-            "status": "completed",
-            "progress": "done",
-            "filename": filename,
-            "clips": clips_data["clips"],
-            "merged_clip_url": clips_data["merged_clip_url"],
-        }
-
-    except Exception as exc:
-        tasks_status[video_id] = {
-            "status": "failed",
-            "error": str(exc),
-            "filename": filename,
-            "clips": [],
-            "merged_clip_url": None,
-        }
-
 
 @app.get("/health")
 def health():
@@ -141,126 +68,294 @@ def health():
 
 @app.post("/videos/upload")
 async def upload_video(
-    background_tasks: BackgroundTasks,
-    file: UploadFile | None = File(None),
-    url: str | None = Form(None),
-    prompt: str = Form(
-        "Summarize the video in 3 sentences."
-    ),
+    file: UploadFile = File(...),
+    prompt: str = Form("Summarize the video in 3 sentences."),
+    current_user: str = Depends(get_current_user),
 ):
-    """
-    Create video highlights from either:
-
-    - an uploaded video file
-    - a video URL
-    """
-
-    # Validate input
-    if file is not None and url:
+    if not file.filename:
         raise HTTPException(
             status_code=400,
-            detail="Provide either a video file or a URL, not both.",
+            detail="Filename is missing",
         )
 
-    if file is None and not url:
+    extension = Path(file.filename).suffix.lower()
+    allowed_extensions = {
+        ".mp4",
+        ".mov",
+        ".mkv",
+        ".webm",
+    }
+
+    if extension not in allowed_extensions:
         raise HTTPException(
             status_code=400,
-            detail="Provide a video file or a video URL.",
+            detail="Unsupported video format",
         )
 
     video_id = uuid4().hex
+    video_filename = f"{video_id}{extension}"
+    video_path = UPLOAD_DIR / video_filename
+    filename_to_return = file.filename
 
-    video_path = (
-        UPLOAD_DIR /
-        f"{video_id}.mp4"
-    )
-
-    audio_path = (
-        AUDIO_DIR /
-        f"{video_id}.mp3"
-    )
-
-    filename = ""
-
-    # CASE 1: Uploaded video
-    if file is not None:
-        allowed_extensions = {
-            ".mp4",
-            ".mov",
-            ".mkv",
-            ".webm",
-        }
-
-        original_filename = (
-            file.filename or ""
+    print(f"[STAGE: File Upload] Started saving file: {filename_to_return}")
+    try:
+        with open(video_path, "wb") as output:
+            while chunk := await file.read(1024 * 1024):
+                output.write(chunk)
+        print(f"[STAGE: File Upload] SUCCESS. Saved to {video_path}")
+    except Exception as e:
+        print(f"[STAGE: File Upload] FAILURE: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save uploaded file: {str(e)}"
         )
 
-        extension = Path(
-            original_filename
-        ).suffix.lower()
+    return await process_video_pipeline(video_id, video_path, filename_to_return, prompt)
 
-        if extension not in allowed_extensions:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Unsupported video format. "
-                    "Supported formats: "
-                    ".mp4, .mov, .mkv, .webm"
-                ),
-            )
 
-        # Save the uploaded video locally
-        with video_path.open("wb") as output_file:
-            while True:
-                chunk = await file.read(
-                    1024 * 1024
-                )
-                if not chunk:
-                    break
-                output_file.write(chunk)
+@app.post("/videos/youtube")
+async def youtube_video(
+    youtube_url: str = Form(...),
+    prompt: str = Form("Summarize the video in 3 sentences."),
+    current_user: str = Depends(get_current_user),
+):
+    video_id = uuid4().hex
+    print(f"[STAGE: YouTube Download] Started for URL: {youtube_url}")
+    try:
+        downloaded_file_path = download_youtube_video(youtube_url, UPLOAD_DIR, video_id)
+        video_path = Path(downloaded_file_path)
+        extension = video_path.suffix.lower()
+        filename_to_return = f"youtube_{video_id}{extension}"
+        print(f"[STAGE: YouTube Download] SUCCESS. Video saved to {video_path}")
+    except Exception as e:
+        print(f"[STAGE: YouTube Download] FAILURE: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to download YouTube video: {str(e)}"
+        )
 
-        filename = original_filename
+    return await process_video_pipeline(video_id, video_path, filename_to_return, prompt)
 
-    # CASE 2: Video URL
-    else:
-        filename = url
 
-    # Start the background task
-    background_tasks.add_task(
-        process_video_pipeline,
-        video_id,
-        video_path,
-        audio_path,
-        url,
-        prompt,
-        filename,
-    )
+async def process_video_pipeline(video_id: str, video_path: Path, filename_to_return: str, prompt: str):
+    # extract audio
+    audio_filename = f"{video_id}.mp3"
+    audio_path = AUDIO_DIR / audio_filename
 
-    # Initialize status in the dictionary
-    tasks_status[video_id] = {
-        "status": "processing",
-        "progress": "queued",
-        "filename": filename,
-        "clips": [],
-        "merged_clip_url": None,
-    }
+    print("[STAGE: Audio Extraction] Started")
+    try:
+        extract_audio(
+            str(video_path),
+            str(audio_path),
+        )
+        print("[STAGE: Audio Extraction] SUCCESS")
+    except Exception as e:
+        print(f"[STAGE: Audio Extraction] FAILURE: {str(e)}")
+        raise e
+
+    # transcript
+    print("[STAGE: Transcription] Started")
+    try:
+        transcript = transcribe_audio(
+            str(audio_path)
+        )
+        print("[STAGE: Transcription] SUCCESS")
+    except Exception as e:
+        print(f"[STAGE: Transcription] FAILURE: {str(e)}")
+        raise e
+
+    # highlight
+    print("[STAGE: Highlights Analysis] Started")
+    try:
+        highlights = find_highlights(
+            transcript,
+            prompt
+        )
+        print("[STAGE: Highlights Analysis] SUCCESS")
+    except Exception as e:
+        print(f"[STAGE: Highlights Analysis] FAILURE: {str(e)}")
+        raise e
+
+    print("Highlights found:", highlights)
+
+    # clip
+    print("[STAGE: Video Clipping] Started")
+    try:
+        clips = create_clips(
+            str(video_path),
+            highlights
+        )
+        print("[STAGE: Video Clipping] SUCCESS")
+    except Exception as e:
+        print(f"[STAGE: Video Clipping] FAILURE: {str(e)}")
+        raise e
+
+    # merge clips
+    print("[STAGE: Teaser Generation/Merge] Started")
+    try:
+        teaser_url = merge_clips(
+            video_id,
+            clips,
+        )
+        print("[STAGE: Teaser Generation/Merge] SUCCESS")
+    except Exception as e:
+        print(f"[STAGE: Teaser Generation/Merge] FAILURE: {str(e)}")
+        raise e
 
     return {
         "video_id": video_id,
-        "status": "processing",
-        "check_status_url": f"/videos/{video_id}"
+        "filename": filename_to_return,
+        "clips": clips,
+        "teaser_url": teaser_url,
     }
 
+@router.post("/{video_id}/save")
+async def save_video(
+    video_id: str,
 
-@app.get("/videos/{video_id}")
-def get_video_status(video_id: str):
-    """
-    Get the status of a highlight generation task.
-    """
-    if video_id not in tasks_status:
+    visibility: VisibilitySchema,
+
+    current_user=Depends(
+        get_current_user
+    ),
+):
+
+    user_id = current_user["user_id"]
+
+    teaser_path = (
+        Path("clips")
+        / video_id
+        / "teaser.mp4"
+    )
+
+    if not teaser_path.exists():
+
         raise HTTPException(
             status_code=404,
-            detail="Video task not found."
+            detail="Generated video not found",
         )
 
-    return tasks_status[video_id]
+    try:
+
+        result = save_generated_video(
+
+            user_id=user_id,
+
+            video_id=video_id,
+
+            teaser_path=str(
+                teaser_path
+            ),
+
+            visibility=visibility.visibility,
+        )
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save video: {str(e)}",
+        )
+
+    # Delete local copy after successful S3 upload
+    try:
+
+        teaser_path.unlink(
+            missing_ok=True
+        )
+
+    except Exception:
+        pass
+
+    return result
+
+@router.get("/my")
+async def my_videos(
+    current_user=Depends(
+        get_current_user
+    ),
+):
+
+    user_id = current_user["user_id"]
+
+    videos = get_user_videos(
+        user_id
+    )
+
+    return {
+        "videos": videos
+    }
+
+@router.get("/private")
+async def private_videos(
+    current_user=Depends(
+        get_current_user
+    ),
+):
+
+    user_id = current_user["user_id"]
+
+    videos = get_private_videos(
+        user_id
+    )
+
+    return {
+        "videos": videos
+    }
+
+@router.get("/public")
+async def public_videos():
+
+    videos = get_public_videos()
+
+    return {
+        "videos": videos
+    }
+
+@router.patch("/{video_id}/visibility")
+async def update_visibility(
+    video_id: str,
+
+    visibility: VisibilitySchema,
+
+    current_user=Depends(
+        get_current_user
+    ),
+):
+
+    user_id = current_user["user_id"]
+
+    # Check that this video belongs to user
+    video = get_video(
+        user_id=user_id,
+        video_id=video_id,
+    )
+
+    if not video:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Video not found",
+        )
+
+    if video.get("status") != "saved":
+
+        raise HTTPException(
+            status_code=400,
+            detail="Video has not been saved",
+        )
+
+    # Update visibility
+    updated_video = change_video_visibility(
+
+        user_id=user_id,
+
+        video_id=video_id,
+
+        visibility=visibility.visibility,
+    )
+
+    return {
+        "message": "Video visibility updated",
+        "video": updated_video,
+    }
