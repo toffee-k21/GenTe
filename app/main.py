@@ -19,7 +19,15 @@ from app.services.transcription import (
 )
 from app.services.youtube import download_youtube_video
 from app.auth import router as auth_router, get_current_user
-
+from app.services.video_save import (
+    save_generated_video,
+    get_user_videos,
+    get_private_videos,
+    get_public_videos,
+    get_video,
+    change_video_visibility,
+)
+from app.schemas.video import VideoVisibilitySchema
 
 app = FastAPI(
     title="TeaserAI",
@@ -210,11 +218,11 @@ async def process_video_pipeline(video_id: str, video_path: Path, filename_to_re
         "teaser_url": teaser_url,
     }
 
-@router.post("/{video_id}/save")
+@app.post("/{video_id}/save")
 async def save_video(
     video_id: str,
 
-    visibility: VisibilitySchema,
+    visibility: VideoVisibilitySchema,
 
     current_user=Depends(
         get_current_user
@@ -270,7 +278,7 @@ async def save_video(
 
     return result
 
-@router.get("/my")
+@app.get("/my")
 async def my_videos(
     current_user=Depends(
         get_current_user
@@ -287,7 +295,7 @@ async def my_videos(
         "videos": videos
     }
 
-@router.get("/private")
+@app.get("/private")
 async def private_videos(
     current_user=Depends(
         get_current_user
@@ -304,7 +312,7 @@ async def private_videos(
         "videos": videos
     }
 
-@router.get("/public")
+@app.get("/public")
 async def public_videos():
 
     videos = get_public_videos()
@@ -313,11 +321,11 @@ async def public_videos():
         "videos": videos
     }
 
-@router.patch("/{video_id}/visibility")
+@app.patch("/{video_id}/visibility")
 async def update_visibility(
     video_id: str,
 
-    visibility: VisibilitySchema,
+    visibility: VideoVisibilitySchema,
 
     current_user=Depends(
         get_current_user

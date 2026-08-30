@@ -5,7 +5,7 @@ from boto3.dynamodb.conditions import Key
 from app.clients.dynamodb import videos_table
 
 from app.clients.s3 import (
-    upload_video,
+    upload_file,
     generate_presigned_url,
 )
 
@@ -26,7 +26,7 @@ def save_generated_video(
     )
 
     # Upload local teaser to S3
-    upload_video(
+    upload_file(
         file_path=teaser_path,
         s3_key=s3_key,
     )
