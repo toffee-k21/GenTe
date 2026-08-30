@@ -162,22 +162,22 @@ async def process_video_pipeline(video_id: str, video_path: Path, filename_to_re
         print(f"[STAGE: Audio Extraction] FAILURE: {str(e)}")
         raise e
 
-    # transcript
-    print("[STAGE: Transcription] Started")
-    try:
-        transcript = transcribe_audio(
-            str(audio_path)
-        )
-        print("[STAGE: Transcription] SUCCESS")
-    except Exception as e:
-        print(f"[STAGE: Transcription] FAILURE: {str(e)}")
-        raise e
+    # transcript -- not needed any more 
+    # print("[STAGE: Transcription] Started")
+    # try:
+        # transcript = transcribe_audio(
+    #         str(audio_path)
+    #     )
+    #     print("[STAGE: Transcription] SUCCESS")
+    # except Exception as e:
+    #     print(f"[STAGE: Transcription] FAILURE: {str(e)}")
+    #     raise e
 
     # highlight
     print("[STAGE: Highlights Analysis] Started")
     try:
         highlights = find_highlights(
-            transcript,
+            audio_path,
             prompt
         )
         print("[STAGE: Highlights Analysis] SUCCESS")
