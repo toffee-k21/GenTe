@@ -5,15 +5,32 @@ import jwt
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Security, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Security,
+    status,
+)
+
+from fastapi.security import (
+    HTTPAuthorizationCredentials,
+    HTTPBearer,
+)
+
 from pydantic import BaseModel, EmailStr
 
-import boto3
+from boto3.dynamodb.conditions import Key
+
 from botocore.exceptions import ClientError
+
 from app.clients.dynamodb import users_table
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+
+router = APIRouter(
+    prefix="/auth",
+    tags=["auth"],
+)
 
 
 # ============================================================
@@ -22,251 +39,424 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 SECRET_KEY = os.getenv(
     "JWT_SECRET_KEY",
-    "teaserai-super-secret-teaser-key-change-in-production"
+    "teaserai-super-secret-teaser-key-change-in-production",
 )
 
 ALGORITHM = "HS256"
 
 ACCESS_TOKEN_EXPIRE_MINUTES = int(
-    os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+    os.getenv(
+        "ACCESS_TOKEN_EXPIRE_MINUTES",
+        "60",
+    )
 )
 
 security = HTTPBearer()
+
 
 # ============================================================
 # Schemas
 # ============================================================
 
 class UserRegisterSchema(BaseModel):
+
     email: EmailStr
     password: str
 
 
 class UserLoginSchema(BaseModel):
+
     email: EmailStr
     password: str
 
 
 class TokenSchema(BaseModel):
+
     access_token: str
     token_type: str = "bearer"
     email: str
 
 
 # ============================================================
-# Password hashing helpers
+# Password hashing
 # ============================================================
 
-def hash_password(password: str) -> str:
+def hash_password(
+    password: str,
+) -> str:
+
     salt = bcrypt.gensalt()
+
     hashed = bcrypt.hashpw(
         password.encode("utf-8"),
-        salt
+        salt,
     )
 
     return hashed.decode("utf-8")
 
 
-def verify_password(password: str, hashed_password: str) -> bool:
+def verify_password(
+    password: str,
+    hashed_password: str,
+) -> bool:
+
     try:
+
         return bcrypt.checkpw(
             password.encode("utf-8"),
-            hashed_password.encode("utf-8")
+            hashed_password.encode("utf-8"),
         )
+
     except Exception:
+
         return False
 
 
 # ============================================================
-# JWT Helpers
+# JWT
 # ============================================================
 
 def create_access_token(
     data: dict,
-    expires_delta: timedelta = None
+    expires_delta: timedelta = None,
 ) -> str:
 
     to_encode = data.copy()
 
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
+
         expire = (
             datetime.now(timezone.utc)
-            + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+            + expires_delta
         )
 
-    to_encode.update({"exp": expire})
+    else:
+
+        expire = (
+            datetime.now(timezone.utc)
+            + timedelta(
+                minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+            )
+        )
+
+    to_encode.update({
+        "exp": expire
+    })
 
     encoded_jwt = jwt.encode(
         to_encode,
         SECRET_KEY,
-        algorithm=ALGORITHM
+        algorithm=ALGORITHM,
     )
 
     return encoded_jwt
 
 
-def verify_token(token: str) -> dict:
+def verify_token(
+    token: str,
+) -> dict:
+
     try:
+
         payload = jwt.decode(
             token,
             SECRET_KEY,
-            algorithms=[ALGORITHM]
+            algorithms=[ALGORITHM],
         )
 
         return payload
 
     except jwt.ExpiredSignatureError:
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
         )
 
     except jwt.InvalidTokenError:
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
         )
 
 
 # ============================================================
-# Dependency to fetch current user
+# Current user
 # ============================================================
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Security(security)
-) -> str:
+    credentials: HTTPAuthorizationCredentials = Security(
+        security
+    ),
+):
 
     token = credentials.credentials
 
     payload = verify_token(token)
 
-    email: str = payload.get("sub")
+    user_id = payload.get("user_id")
+    email = payload.get("sub")
 
-    if email is None:
+    if user_id is None or email is None:
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
         )
 
-    return email
+    return {
+        "user_id": user_id,
+        "email": email,
+    }
 
 
 # ============================================================
-# Auth Routes
+# Find user by email
+# ============================================================
+
+def get_user_by_email(
+    email: str,
+):
+
+    response = users_table.query(
+
+        IndexName="email-index",
+
+        KeyConditionExpression=Key(
+            "email"
+        ).eq(email),
+
+        Limit=1,
+    )
+
+    items = response.get(
+        "Items",
+        []
+    )
+
+    if not items:
+        return None
+
+    return items[0]
+
+
+# ============================================================
+# Register
 # ============================================================
 
 @router.post(
     "/register",
-    status_code=status.HTTP_201_CREATED
+    status_code=status.HTTP_201_CREATED,
 )
-async def register(user_data: UserRegisterSchema):
+async def register(
+    user_data: UserRegisterSchema,
+):
 
     email = user_data.email.lower()
 
-    hashed_pwd = hash_password(user_data.password)
+    # --------------------------------------------------------
+    # Check email using GSI
+    # --------------------------------------------------------
 
-    # Check if user already exists
     try:
-        response = users_table.get_item(
-            Key={
-                "email": email
-            }
+
+        existing_user = get_user_by_email(
+            email
         )
 
-        if "Item" in response:
+        if existing_user:
+
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email is already registered"
+                detail="Email is already registered",
             )
 
-        # Create user
-        user = {
-            "email": email,
-            "user_id": str(uuid.uuid4()),
-            "password": hashed_pwd,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
+    except HTTPException:
+
+        raise
+
+    except ClientError as e:
+
+        print(
+            "DynamoDB register error:",
+            e.response["Error"]
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error during registration",
+        )
+
+
+    # --------------------------------------------------------
+    # Create user
+    # --------------------------------------------------------
+
+    user_id = str(
+        uuid.uuid4()
+    )
+
+    hashed_password = hash_password(
+        user_data.password
+    )
+
+    user = {
+
+        "user_id": user_id,
+
+        "email": email,
+
+        "password": hashed_password,
+
+        "created_at": datetime.now(
+            timezone.utc
+        ).isoformat(),
+    }
+
+
+    # --------------------------------------------------------
+    # Save user
+    # --------------------------------------------------------
+
+    try:
 
         users_table.put_item(
             Item=user,
-            ConditionExpression="attribute_not_exists(email)"
+
+            ConditionExpression=(
+                "attribute_not_exists(user_id)"
+            ),
         )
 
     except ClientError as e:
 
-        error_code = e.response["Error"]["Code"]
-
-        if error_code == "ConditionalCheckFailedException":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email is already registered"
-            )
+        print(
+            "DynamoDB put user error:",
+            e.response["Error"]
+        )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error during registration"
+            detail="Database error during registration",
         )
 
+
     return {
-        "message": "User registered successfully"
+        "message": "User registered successfully",
+        "user_id": user_id,
     }
 
+
+# ============================================================
+# Login
+# ============================================================
 
 @router.post(
     "/login",
-    response_model=TokenSchema
+    response_model=TokenSchema,
 )
-async def login(user_data: UserLoginSchema):
+async def login(
+    user_data: UserLoginSchema,
+):
 
     email = user_data.email.lower()
 
+    # --------------------------------------------------------
+    # Find user using email GSI
+    # --------------------------------------------------------
+
     try:
-        response = users_table.get_item(
-            Key={
-                "email": email
-            }
+
+        user = get_user_by_email(
+            email
         )
 
-    except ClientError:
+    except ClientError as e:
+
+        print(
+            "DynamoDB login error:",
+            e.response["Error"]
+        )
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error during login"
+            detail="Database error during login",
         )
 
-    user = response.get("Item")
 
-    if not user or not verify_password(
-        user_data.password,
-        user["password"]
-    ):
+    # --------------------------------------------------------
+    # Validate credentials
+    # --------------------------------------------------------
+
+    if not user:
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
         )
 
+
+    if not verify_password(
+        user_data.password,
+        user["password"],
+    ):
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
+        )
+
+
+    # --------------------------------------------------------
+    # Create JWT
+    # --------------------------------------------------------
+
     access_token = create_access_token(
+
         data={
-            "sub": email
+
+            "sub": user["email"],
+
+            "user_id": user["user_id"],
         }
     )
 
+
     return {
+
         "access_token": access_token,
+
         "token_type": "bearer",
-        "email": email
+
+        "email": user["email"],
     }
 
+
+# ============================================================
+# Me
+# ============================================================
 
 @router.get("/me")
 async def get_me(
-    current_user: str = Depends(get_current_user)
+    current_user=Depends(
+        get_current_user
+    ),
 ):
-    return {
-        "email": current_user
-    }
+
+    return current_user
