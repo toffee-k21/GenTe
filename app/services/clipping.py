@@ -1,16 +1,3 @@
-from pathlib import Path
-import subprocess
-from app.services.video import get_ffmpeg_path
-
-
-CLIPS_DIR = Path("clips")
-
-CLIPS_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
-
-
 def create_clips(
     video_path: str,
     highlights: dict,
@@ -30,39 +17,54 @@ def create_clips(
         highlights["clips"],
         start=1,
     ):
-        start = highlight["start"]
-        end = highlight["end"]
+        start = float(highlight["start"])
+        end = float(highlight["end"])
+
+        if start < 0:
+            raise ValueError(
+                f"Invalid start timestamp: {start}"
+            )
+
+        if end <= start:
+            raise ValueError(
+                f"Invalid highlight range: {start} -> {end}"
+            )
 
         duration = end - start
+
+        if duration < 10 or duration > 25:
+            raise ValueError(
+                f"Invalid clip duration: {duration:.2f}s"
+            )
 
         clip_filename = f"clip_{index}.mp4"
 
         clip_path = (
-            video_clips_dir /
-            clip_filename
+            video_clips_dir / clip_filename
         )
 
         command = [
             get_ffmpeg_path(),
             "-y",
 
-            "-ss",
-            str(start),
+            "-ss", str(start),
+            "-i", video_path,
 
-            "-i",
-            video_path,
+            "-t", str(duration),
 
-            "-t",
-            str(duration),
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-threads", "1",
 
-            "-c:v",
-            "libx264",
-
-            "-c:a",
-            "aac",
+            "-c:a", "aac",
 
             str(clip_path),
         ]
+
+        print(
+            f"[FFmpeg] Creating clip {index}: "
+            f"{start:.2f}s -> {end:.2f}s"
+        )
 
         subprocess.run(
             command,
@@ -102,20 +104,22 @@ def merge_clips(
     command = [
         get_ffmpeg_path(),
         "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(concat_file),
-        "-c:v",
-        "libx264",
-        "-c:a",
-        "aac",
-        "-movflags",
-        "+faststart",
+
+        "-f", "concat",
+        "-safe", "0",
+        "-i", str(concat_file),
+
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-threads", "1",
+
+        "-c:a", "aac",
+
+        "-movflags", "+faststart",
+
         str(teaser_path),
     ]
+
 
     result = subprocess.run(
         command,

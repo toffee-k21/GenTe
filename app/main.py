@@ -177,7 +177,7 @@ async def process_video_pipeline(video_id: str, video_path: Path, filename_to_re
     print("[STAGE: Highlights Analysis] Started")
     try:
         highlights = find_highlights(
-            audio_path,
+            str(audio_path),
             prompt
         )
         print("[STAGE: Highlights Analysis] SUCCESS")
