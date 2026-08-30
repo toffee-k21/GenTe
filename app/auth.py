@@ -11,7 +11,7 @@ from pydantic import BaseModel, EmailStr
 
 import boto3
 from botocore.exceptions import ClientError
-
+from app.clients.dynamodb import users_table
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,22 +32,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
 )
 
 security = HTTPBearer()
-
-
-# ============================================================
-# DynamoDB
-# ============================================================
-
-AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
-DYNAMODB_TABLE_NAME = os.getenv("DYNAMODB_TABLE_NAME", "users")
-
-dynamodb = boto3.resource(
-    "dynamodb",
-    region_name=AWS_REGION
-)
-
-users_table = dynamodb.Table(DYNAMODB_TABLE_NAME)
-
 
 # ============================================================
 # Schemas
