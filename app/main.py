@@ -146,77 +146,116 @@ async def youtube_video(
     return await process_video_pipeline(video_id, video_path, filename_to_return, prompt)
 
 
-async def process_video_pipeline(video_id: str, video_path: Path, filename_to_return: str, prompt: str):
-    # extract audio
+async def process_video_pipeline(
+    video_id: str,
+    video_path: Path,
+    filename_to_return: str,
+    prompt: str,
+):
+
+    # ========================================================
+    # 1. Extract audio
+    # ========================================================
+
     audio_filename = f"{video_id}.mp3"
     audio_path = AUDIO_DIR / audio_filename
 
     print("[STAGE: Audio Extraction] Started")
+
     try:
         extract_audio(
             str(video_path),
             str(audio_path),
         )
+
         print("[STAGE: Audio Extraction] SUCCESS")
+
     except Exception as e:
         print(f"[STAGE: Audio Extraction] FAILURE: {str(e)}")
         raise e
 
-    # transcript -- not needed any more 
-    # print("[STAGE: Transcription] Started")
-    # try:
-        # transcript = transcribe_audio(
-    #         str(audio_path)
-    #     )
-    #     print("[STAGE: Transcription] SUCCESS")
-    # except Exception as e:
-    #     print(f"[STAGE: Transcription] FAILURE: {str(e)}")
-    #     raise e
 
-    # highlight
+    # ========================================================
+    # 2. Find highlights
+    # ========================================================
+
     print("[STAGE: Highlights Analysis] Started")
+
     try:
         highlights = find_highlights(
             str(audio_path),
-            prompt
+            prompt,
         )
+
         print("[STAGE: Highlights Analysis] SUCCESS")
+
+        # Audio no longer needed
+        delete_file(audio_path)
+
     except Exception as e:
         print(f"[STAGE: Highlights Analysis] FAILURE: {str(e)}")
         raise e
 
+
     print("Highlights found:", highlights)
 
-    # clip
+
+    # ========================================================
+    # 3. Create clips
+    # ========================================================
+
     print("[STAGE: Video Clipping] Started")
+
     try:
         clips = create_clips(
             str(video_path),
-            highlights
+            highlights,
         )
+
         print("[STAGE: Video Clipping] SUCCESS")
+
+        # Original uploaded video no longer needed
+        delete_file(video_path)
+
     except Exception as e:
         print(f"[STAGE: Video Clipping] FAILURE: {str(e)}")
         raise e
 
-    # merge clips
+
+    # ========================================================
+    # 4. Merge clips into teaser
+    # ========================================================
+
     print("[STAGE: Teaser Generation/Merge] Started")
+
     try:
         teaser_url = merge_clips(
             video_id,
             clips,
         )
+
         print("[STAGE: Teaser Generation/Merge] SUCCESS")
+
+        # Delete temporary clips
+        for clip in clips:
+            delete_file(Path(clip))
+
     except Exception as e:
         print(f"[STAGE: Teaser Generation/Merge] FAILURE: {str(e)}")
         raise e
 
+
+    # ========================================================
+    # 5. Return teaser
+    # ========================================================
+
     return {
         "video_id": video_id,
         "filename": filename_to_return,
-        "clips": clips,
+        # "clips": clips,
         "teaser_url": teaser_url,
     }
+
 
 @app.post("/{video_id}/save")
 async def save_video(
@@ -368,3 +407,10 @@ async def update_visibility(
         "message": "Video visibility updated",
         "video": updated_video,
     }
+
+def delete_file(path: Path):
+    try:
+        path.unlink(missing_ok=True)
+        print(f"[CLEANUP] Deleted: {path}")
+    except Exception as e:
+        print(f"[CLEANUP] Failed to delete {path}: {e}")
