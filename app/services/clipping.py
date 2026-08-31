@@ -113,6 +113,11 @@ def merge_clips(
         encoding="utf-8",
     )
 
+    # Calculate total duration for fade out timing
+    total_duration = sum(clip['duration'] for clip in clips)
+    fade_duration = 1  # 1 second fade
+    fade_out_start = total_duration - fade_duration
+
     command = [
         get_ffmpeg_path(),
         "-y",
@@ -120,6 +125,9 @@ def merge_clips(
         "-f", "concat",
         "-safe", "0",
         "-i", str(concat_file),
+
+        "-vf", f"fade=t=in:st=0:d={fade_duration},fade=t=out:st={fade_out_start}:d={fade_duration}",
+        "-af", f"afade=t=in:st=0:d={fade_duration},afade=t=out:st={fade_out_start}:d={fade_duration}",
 
         "-c:v", "libx264",
         "-preset", "ultrafast",
