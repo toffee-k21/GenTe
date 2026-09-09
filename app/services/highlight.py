@@ -28,9 +28,9 @@ def find_highlights(audio_path: str, user_prompt: str):
     """
 
     models_to_try = [
+        "gemini-3.8-flash",
         "gemini-3.6-flash",
-        "gemini-3.5-flash",
-        "gemini-2.5-flash"
+        "gemini-3.5-flash"
     ]
 
     response = None
