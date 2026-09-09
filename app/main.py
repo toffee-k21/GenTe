@@ -238,7 +238,7 @@ async def process_video_pipeline(
 
         # Delete temporary clips
         for clip in clips:
-            delete_file(Path(clip))
+            delete_file(Path(clip["clip_path"]))
 
     except Exception as e:
         print(f"[STAGE: Teaser Generation/Merge] FAILURE: {str(e)}")

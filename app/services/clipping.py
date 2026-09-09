@@ -92,6 +92,7 @@ def create_clips(
             "clip_url": (
                 f"/clips/{video_id}/{clip_filename}"
             ),
+            "clip_path": str(clip_path)
         })
 
     return clips
