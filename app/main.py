@@ -153,9 +153,7 @@ async def process_video_pipeline(
     prompt: str,
 ):
 
-    # ========================================================
     # 1. Extract audio
-    # ========================================================
 
     audio_filename = f"{video_id}.mp3"
     audio_path = AUDIO_DIR / audio_filename
@@ -175,9 +173,7 @@ async def process_video_pipeline(
         raise e
 
 
-    # ========================================================
     # 2. Find highlights
-    # ========================================================
 
     print("[STAGE: Highlights Analysis] Started")
 
@@ -200,9 +196,7 @@ async def process_video_pipeline(
     print("Highlights found:", highlights)
 
 
-    # ========================================================
     # 3. Create clips
-    # ========================================================
 
     print("[STAGE: Video Clipping] Started")
 
@@ -222,10 +216,7 @@ async def process_video_pipeline(
         raise e
 
 
-    # ========================================================
     # 4. Merge clips into teaser
-    # ========================================================
-
     print("[STAGE: Teaser Generation/Merge] Started")
 
     try:
@@ -245,9 +236,7 @@ async def process_video_pipeline(
         raise e
 
 
-    # ========================================================
     # 5. Return teaser
-    # ========================================================
 
     return {
         "video_id": video_id,
